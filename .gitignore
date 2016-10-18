@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+# OS
+.DS_Store
+
+# Editors
+.idea
+*.sublime-project
+*.sublime-workspace
+*.sublime-workspace
+
+# Installed packages
+*.egg-info/
+*.dist-info/
+requests/
+vanity.py
+
+*.zip
