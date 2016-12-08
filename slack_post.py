@@ -37,19 +37,26 @@ def e(s):
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
-def read_and_truncate(f, size=1024, relax=10, encoding='UTF-8'):
+def read_and_truncate(f, size, relax=10, encoding='UTF-8'):
+    truncated = 0
     f.seek(0)
     filesize = os.path.getsize(f.name)
 
-    if filesize < size * (1 + relax / 100.):
-        size = filesize
+    if size is None:
+        data = f.read()
+    else:
+        if filesize < size * (1 + relax / 100.):
+            size = filesize
+        else:
+            truncated = filesize - size
 
-    data = f.read(size)
+        data = f.read(size)
+
     if encoding:
         data = data.decode(encoding)
 
-    if filesize > size:
-        data = '\n'.join([data, '[...{} bytes truncated]'.format(filesize - size)])
+    if truncated:
+        data = '\n'.join([data, '[...{} bytes truncated]'.format(truncated)])
 
     return data
 
@@ -61,26 +68,21 @@ def get_random_text():
         return 'I love cats!'
 
 
-def execute_command(command):
-    stdout = NamedTemporaryFile()
-    stderr = NamedTemporaryFile()
+def execute_command(command, output_size):
+    with NamedTemporaryFile() as stdout, NamedTemporaryFile() as stderr:
+        start = datetime.now()
+        proc = subprocess.Popen(command, stdout=stdout, stderr=stderr, shell=True)
+        proc.communicate()
+        delta = datetime.now() - start
 
-    start = datetime.now()
-    proc = subprocess.Popen(command, stdout=stdout, stderr=stderr, shell=True)
-    proc.communicate()
-    delta = datetime.now() - start
-
-    stdout_data = read_and_truncate(stdout, encoding=sys.stdout.encoding)
-    stderr_data = read_and_truncate(stderr, encoding=sys.stderr.encoding)
-
-    stdout.close()
-    stderr.close()
+        stdout_data = read_and_truncate(stdout, size=output_size, encoding=sys.stdout.encoding)
+        stderr_data = read_and_truncate(stderr, size=output_size, encoding=sys.stderr.encoding)
 
     return proc.returncode, stdout_data, stderr_data, delta
 
 
-def prepare_command(command):
-    exit_code, stdout, stderr, delta = execute_command(command)
+def prepare_command(command, output_size):
+    exit_code, stdout, stderr, delta = execute_command(command, output_size)
 
     plain_command = ' '.join(command)
 
@@ -124,7 +126,7 @@ def prepare_command(command):
 
 
 def prepare_data(text=None, filename=None, channel=None, command=None,
-                 username=None, icon_emoji=None):
+                 username=None, icon_emoji=None, output_size=None):
     text = [text]
 
     if filename == '-':
@@ -151,7 +153,7 @@ def prepare_data(text=None, filename=None, channel=None, command=None,
     }
 
     if command:
-        payload['attachments'] = [prepare_command(command)]
+        payload['attachments'] = [prepare_command(command, output_size)]
 
     return payload
 
@@ -161,8 +163,13 @@ def post_data(url, payload):
 
 
 def main(args):
-    payload = prepare_data(args.text, args.file, args.channel,
-                           args.command, args.username, args.icon_emoji)
+    payload = prepare_data(text=args.text,
+                           filename=args.file,
+                           channel=args.channel,
+                           command=args.command,
+                           username=args.username,
+                           icon_emoji=args.icon_emoji,
+                           output_size=None if args.no_size else args.size)
     post_data(args.webhook_url, payload)
 
 
@@ -195,6 +202,14 @@ if __name__ == '__main__':
 
     parser.add_argument('-f', '--file',
                         help='Post the content of a text file. Use - for stdin.')
+
+    parser.add_argument('-s', '--size',
+                        default=os.environ.get('SLACK_OUTPUT_SIZE', 1024),
+                        help='Truncate any output past the given size (in bytes)')
+
+    parser.add_argument('-S', '--no-size',
+                        default=os.environ.get('SLACK_OUTPUT_NO_SIZE', False),
+                        help="Don't truncate any output (overrides -s)")
 
     parser.add_argument('command',
                         nargs='?',
