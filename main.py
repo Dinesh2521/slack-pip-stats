@@ -15,8 +15,13 @@ def post_pip_downloads(*args, **kwargs):
         'command': ['python vanity.py {} 2>&1'.format(PIP_PKG)], # Hilariously, vanity outputs to stderr
         'username': 'pip-stats',
         'icon_emoji': ':chart_with_upwards_trend:',
+        'output_size': None,
     }
 
     payloads = [prepare_data(channel=ch, **base_args) for ch in SLACK_CHANNELS]
     for payload in payloads:
         post_data(SLACK_WEBHOOK, payload)
+
+
+if __name__ == '__main__':
+    post_pip_downloads()
